@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: eutype-frontend
+  namespace: eucloud
+  labels:
+    app: eutype-frontend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: eutype-frontend
+  template:
+    metadata:
+      labels:
+        app: eutype-frontend
+    spec:
+      imagePullSecrets:
+        - name: docker-registry-secret
+      containers:
+        - name: eutype-frontend
+          image: docker.io/dylan016504/eutype-frontend:REPLACED_BY_CI
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 80
+              name: http
+          env:
+            - name: VITE_API_BASE
+              value: "http://192.168.124.50:30500/api"
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 5

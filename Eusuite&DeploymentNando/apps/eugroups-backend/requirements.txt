@@ -1,0 +1,24 @@
+# EUGroups Backend Dependencies
+
+# FastAPI framework
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+
+# Database
+sqlalchemy==2.0.25
+psycopg2-binary==2.9.9
+alembic==1.13.1
+
+# HTTP client for SSO validation
+httpx==0.26.0
+
+# WebSocket support (included in uvicorn[standard])
+
+# Pydantic for validation
+pydantic==2.5.3
+
+# Python dotenv for local development
+python-dotenv==1.0.0
+
+# Logging and monitoring
+python-json-logger==2.0.7

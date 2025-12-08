@@ -1,0 +1,878 @@
+# =============================================================================
+# EUSuite Platform - Complete Kubernetes Manifests
+# =============================================================================
+# Dit bestand bevat alle K8s resources voor het multi-tenant platform:
+# - Namespaces
+# - ConfigMaps & Secrets
+# - Deployments & Services
+# - Ingress configurations
+# - RBAC
+# =============================================================================
+
+---
+# =============================================================================
+# NAMESPACES
+# =============================================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: eusuite-platform
+  labels:
+    app.kubernetes.io/name: eusuite
+    app.kubernetes.io/part-of: eusuite-platform
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: eusuite-public
+  labels:
+    app.kubernetes.io/name: eusuite-public
+    app.kubernetes.io/part-of: eusuite-platform
+
+---
+# =============================================================================
+# SECRETS (Base64 encoded - replace with actual values)
+# =============================================================================
+apiVersion: v1
+kind: Secret
+metadata:
+  name: eusuite-secrets
+  namespace: eusuite-platform
+type: Opaque
+data:
+  # echo -n "value" | base64
+  database-url: cG9zdGdyZXNxbDovL2V1c3VpdGU6cGFzc3dvcmRAcG9zdGdyZXM6NTQzMi9ldXN1aXRl
+  jwt-secret: c3VwZXItc2VjcmV0LWp3dC1rZXktY2hhbmdlLWluLXByb2R1Y3Rpb24=
+  stripe-secret-key: c2tfdGVzdF94eHh4eHh4eHh4eHh4eHh4
+  stripe-webhook-secret: d2hzZWNfeHh4eHh4eHh4eHh4eHh4eA==
+  redis-url: cmVkaXM6Ly9yZWRpczo2Mzc5LzA=
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: eusuite-public-secrets
+  namespace: eusuite-public
+type: Opaque
+data:
+  database-url: cG9zdGdyZXNxbDovL2V1c3VpdGU6cGFzc3dvcmRAcG9zdGdyZXM6NTQzMi9ldXN1aXRlX3B1YmxpYw==
+  jwt-secret: cHVibGljLWp3dC1zZWNyZXQtY2hhbmdlLW1l
+
+---
+# =============================================================================
+# CONFIGMAPS
+# =============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: eusuite-config
+  namespace: eusuite-platform
+data:
+  ENVIRONMENT: "production"
+  LOG_LEVEL: "info"
+  CORS_ORIGINS: "https://admin.eusuite.eu,https://company.eusuite.eu"
+  K8S_NAMESPACE_PREFIX: "tenant-"
+  PORT_RANGE_START: "31000"
+  PORT_RANGE_END: "32767"
+  DEFAULT_REPLICAS: "1"
+  DEFAULT_CPU_REQUEST: "100m"
+  DEFAULT_MEMORY_REQUEST: "128Mi"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: eusuite-public-config
+  namespace: eusuite-public
+data:
+  ENVIRONMENT: "production"
+  LOG_LEVEL: "info"
+  CORS_ORIGINS: "https://eusuite.eu,https://www.eusuite.eu"
+
+---
+# =============================================================================
+# TIER 1: PUBLIC WEBSITE (eusuite.eu)
+# =============================================================================
+
+# Public Backend Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: eusuite-public-backend
+  namespace: eusuite-public
+  labels:
+    app: eusuite-public-backend
+    tier: public
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: eusuite-public-backend
+  template:
+    metadata:
+      labels:
+        app: eusuite-public-backend
+        tier: public
+    spec:
+      containers:
+        - name: backend
+          image: ghcr.io/dylan0165/eusuite-public-backend:latest
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: eusuite-public-config
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: eusuite-public-secrets
+                  key: database-url
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: eusuite-public-secrets
+                  key: jwt-secret
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+
+---
+# Public Backend Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: eusuite-public-backend
+  namespace: eusuite-public
+spec:
+  selector:
+    app: eusuite-public-backend
+  ports:
+    - port: 8000
+      targetPort: 8000
+      nodePort: 30100
+  type: NodePort
+
+---
+# Public Frontend Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: eusuite-public-frontend
+  namespace: eusuite-public
+  labels:
+    app: eusuite-public-frontend
+    tier: public
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: eusuite-public-frontend
+  template:
+    metadata:
+      labels:
+        app: eusuite-public-frontend
+        tier: public
+    spec:
+      containers:
+        - name: frontend
+          image: ghcr.io/dylan0165/eusuite-public-frontend:latest
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "128Mi"
+              cpu: "100m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 30
+
+---
+# Public Frontend Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: eusuite-public-frontend
+  namespace: eusuite-public
+spec:
+  selector:
+    app: eusuite-public-frontend
+  ports:
+    - port: 80
+      targetPort: 80
+      nodePort: 30101
+  type: NodePort
+
+---
+# =============================================================================
+# TIER 2: COMPANY PORTAL (company.eusuite.eu)
+# =============================================================================
+
+# Company Backend Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: eusuite-company-backend
+  namespace: eusuite-platform
+  labels:
+    app: eusuite-company-backend
+    tier: company
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: eusuite-company-backend
+  template:
+    metadata:
+      labels:
+        app: eusuite-company-backend
+        tier: company
+    spec:
+      containers:
+        - name: backend
+          image: ghcr.io/dylan0165/eusuite-company-backend:latest
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: eusuite-config
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: eusuite-secrets
+                  key: database-url
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: eusuite-secrets
+                  key: jwt-secret
+            - name: STRIPE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: eusuite-secrets
+                  key: stripe-secret-key
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: eusuite-secrets
+                  key: redis-url
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "300m"
+          volumeMounts:
+            - name: uploads
+              mountPath: /app/uploads
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+      volumes:
+        - name: uploads
+          persistentVolumeClaim:
+            claimName: company-uploads-pvc
+
+---
+# Company Backend Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: eusuite-company-backend
+  namespace: eusuite-platform
+spec:
+  selector:
+    app: eusuite-company-backend
+  ports:
+    - port: 8000
+      targetPort: 8000
+      nodePort: 30200
+  type: NodePort
+
+---
+# Company Frontend Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: eusuite-company-frontend
+  namespace: eusuite-platform
+  labels:
+    app: eusuite-company-frontend
+    tier: company
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: eusuite-company-frontend
+  template:
+    metadata:
+      labels:
+        app: eusuite-company-frontend
+        tier: company
+    spec:
+      containers:
+        - name: frontend
+          image: ghcr.io/dylan0165/eusuite-company-frontend:latest
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "128Mi"
+              cpu: "100m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 30
+
+---
+# Company Frontend Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: eusuite-company-frontend
+  namespace: eusuite-platform
+spec:
+  selector:
+    app: eusuite-company-frontend
+  ports:
+    - port: 80
+      targetPort: 80
+      nodePort: 30201
+  type: NodePort
+
+---
+# =============================================================================
+# TIER 3: SUPERADMIN PORTAL (admin.eusuite.eu)
+# =============================================================================
+
+# Superadmin Backend Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: eusuite-superadmin-backend
+  namespace: eusuite-platform
+  labels:
+    app: eusuite-superadmin-backend
+    tier: superadmin
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: eusuite-superadmin-backend
+  template:
+    metadata:
+      labels:
+        app: eusuite-superadmin-backend
+        tier: superadmin
+    spec:
+      serviceAccountName: eusuite-k8s-admin
+      containers:
+        - name: backend
+          image: ghcr.io/dylan0165/eusuite-superadmin-backend:latest
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: eusuite-config
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: eusuite-secrets
+                  key: database-url
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: eusuite-secrets
+                  key: jwt-secret
+            - name: STRIPE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: eusuite-secrets
+                  key: stripe-secret-key
+            - name: STRIPE_WEBHOOK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: eusuite-secrets
+                  key: stripe-webhook-secret
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: eusuite-secrets
+                  key: redis-url
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "150m"
+            limits:
+              memory: "512Mi"
+              cpu: "400m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+
+---
+# Superadmin Backend Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: eusuite-superadmin-backend
+  namespace: eusuite-platform
+spec:
+  selector:
+    app: eusuite-superadmin-backend
+  ports:
+    - port: 8000
+      targetPort: 8000
+      nodePort: 30300
+  type: NodePort
+
+---
+# Superadmin Frontend Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: eusuite-superadmin-frontend
+  namespace: eusuite-platform
+  labels:
+    app: eusuite-superadmin-frontend
+    tier: superadmin
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: eusuite-superadmin-frontend
+  template:
+    metadata:
+      labels:
+        app: eusuite-superadmin-frontend
+        tier: superadmin
+    spec:
+      containers:
+        - name: frontend
+          image: ghcr.io/dylan0165/eusuite-superadmin-frontend:latest
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "128Mi"
+              cpu: "100m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 30
+
+---
+# Superadmin Frontend Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: eusuite-superadmin-frontend
+  namespace: eusuite-platform
+spec:
+  selector:
+    app: eusuite-superadmin-frontend
+  ports:
+    - port: 80
+      targetPort: 80
+      nodePort: 30301
+  type: NodePort
+
+---
+# =============================================================================
+# SUPPORTING SERVICES (Redis, PostgreSQL)
+# =============================================================================
+
+# Redis Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: eusuite-platform
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          ports:
+            - containerPort: 6379
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "128Mi"
+              cpu: "100m"
+          volumeMounts:
+            - name: redis-data
+              mountPath: /data
+      volumes:
+        - name: redis-data
+          persistentVolumeClaim:
+            claimName: redis-pvc
+
+---
+# Redis Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: eusuite-platform
+spec:
+  selector:
+    app: redis
+  ports:
+    - port: 6379
+      targetPort: 6379
+  type: ClusterIP
+
+---
+# =============================================================================
+# PERSISTENT VOLUME CLAIMS
+# =============================================================================
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: company-uploads-pvc
+  namespace: eusuite-platform
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi
+  storageClassName: local-path
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: redis-pvc
+  namespace: eusuite-platform
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: local-path
+
+---
+# =============================================================================
+# RBAC - Service Account for K8s Management
+# =============================================================================
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: eusuite-k8s-admin
+  namespace: eusuite-platform
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: eusuite-tenant-manager
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces", "services", "configmaps", "secrets", "persistentvolumeclaims"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: eusuite-k8s-admin-binding
+subjects:
+  - kind: ServiceAccount
+    name: eusuite-k8s-admin
+    namespace: eusuite-platform
+roleRef:
+  kind: ClusterRole
+  name: eusuite-tenant-manager
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# =============================================================================
+# INGRESS CONFIGURATION
+# =============================================================================
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: eusuite-ingress
+  namespace: eusuite-platform
+  annotations:
+    kubernetes.io/ingress.class: "traefik"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    traefik.ingress.kubernetes.io/router.middlewares: eusuite-platform-https-redirect@kubernetescrd
+spec:
+  tls:
+    - hosts:
+        - admin.eusuite.eu
+        - company.eusuite.eu
+      secretName: eusuite-platform-tls
+  rules:
+    # Superadmin Portal
+    - host: admin.eusuite.eu
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: eusuite-superadmin-backend
+                port:
+                  number: 8000
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: eusuite-superadmin-frontend
+                port:
+                  number: 80
+    # Company Portal
+    - host: company.eusuite.eu
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: eusuite-company-backend
+                port:
+                  number: 8000
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: eusuite-company-frontend
+                port:
+                  number: 80
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: eusuite-public-ingress
+  namespace: eusuite-public
+  annotations:
+    kubernetes.io/ingress.class: "traefik"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  tls:
+    - hosts:
+        - eusuite.eu
+        - www.eusuite.eu
+      secretName: eusuite-public-tls
+  rules:
+    # Public Website
+    - host: eusuite.eu
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: eusuite-public-backend
+                port:
+                  number: 8000
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: eusuite-public-frontend
+                port:
+                  number: 80
+    - host: www.eusuite.eu
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: eusuite-public-backend
+                port:
+                  number: 8000
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: eusuite-public-frontend
+                port:
+                  number: 80
+
+---
+# =============================================================================
+# HORIZONTAL POD AUTOSCALER
+# =============================================================================
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: eusuite-company-backend-hpa
+  namespace: eusuite-platform
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: eusuite-company-backend
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: eusuite-superadmin-backend-hpa
+  namespace: eusuite-platform
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: eusuite-superadmin-backend
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+
+---
+# =============================================================================
+# NETWORK POLICIES
+# =============================================================================
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-to-backends
+  namespace: eusuite-platform
+spec:
+  podSelector:
+    matchLabels: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: traefik
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 8000
+        - protocol: TCP
+          port: 80
+
+---
+# =============================================================================
+# POD DISRUPTION BUDGET
+# =============================================================================
+
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: eusuite-company-backend-pdb
+  namespace: eusuite-platform
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: eusuite-company-backend
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: eusuite-superadmin-backend-pdb
+  namespace: eusuite-platform
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: eusuite-superadmin-backend

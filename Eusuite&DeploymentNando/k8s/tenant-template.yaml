@@ -1,0 +1,256 @@
+# =============================================================================
+# EUSuite Tenant Template - Kubernetes Manifests
+# =============================================================================
+# Dit template wordt gebruikt door de superadmin backend om automatisch
+# tenant namespaces en deployments te creëren.
+# 
+# Variabelen (vervangen door de K8s service):
+# - {{TENANT_SLUG}}      - Tenant identifier (bijv. "acme-corp")
+# - {{TENANT_ID}}        - Tenant UUID
+# - {{APP_TYPE}}         - App type (eucloud, eutype, eumail, eugroups, dashboard)
+# - {{NODEPORT}}         - Assigned NodePort
+# - {{REPLICAS}}         - Number of replicas
+# - {{CPU_REQUEST}}      - CPU request (bijv. "100m")
+# - {{MEMORY_REQUEST}}   - Memory request (bijv. "128Mi")
+# - {{CPU_LIMIT}}        - CPU limit (bijv. "200m")
+# - {{MEMORY_LIMIT}}     - Memory limit (bijv. "256Mi")
+# - {{STORAGE_SIZE}}     - PVC storage size (bijv. "10Gi")
+# - {{DB_NAME}}          - Database name
+# - {{IMAGE_TAG}}        - Docker image tag
+# =============================================================================
+
+---
+# Tenant Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tenant-{{TENANT_SLUG}}
+  labels:
+    app.kubernetes.io/name: eusuite-tenant
+    app.kubernetes.io/instance: {{TENANT_SLUG}}
+    eusuite.eu/tenant-id: "{{TENANT_ID}}"
+    eusuite.eu/tenant-slug: "{{TENANT_SLUG}}"
+
+---
+# Tenant ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tenant-config
+  namespace: tenant-{{TENANT_SLUG}}
+data:
+  TENANT_ID: "{{TENANT_ID}}"
+  TENANT_SLUG: "{{TENANT_SLUG}}"
+  ENVIRONMENT: "production"
+  LOG_LEVEL: "info"
+
+---
+# Tenant Secrets (created separately with actual values)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: tenant-secrets
+  namespace: tenant-{{TENANT_SLUG}}
+type: Opaque
+data:
+  # Placeholder - actual values set by K8s service
+  database-url: ""
+  jwt-secret: ""
+
+---
+# Resource Quota for Tenant
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: tenant-quota
+  namespace: tenant-{{TENANT_SLUG}}
+spec:
+  hard:
+    requests.cpu: "2"
+    requests.memory: "4Gi"
+    limits.cpu: "4"
+    limits.memory: "8Gi"
+    persistentvolumeclaims: "5"
+    requests.storage: "{{STORAGE_SIZE}}"
+    pods: "20"
+    services: "10"
+
+---
+# Limit Range for Tenant
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: tenant-limits
+  namespace: tenant-{{TENANT_SLUG}}
+spec:
+  limits:
+    - default:
+        cpu: "200m"
+        memory: "256Mi"
+      defaultRequest:
+        cpu: "100m"
+        memory: "128Mi"
+      type: Container
+
+---
+# PVC for Tenant Storage
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: tenant-storage
+  namespace: tenant-{{TENANT_SLUG}}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: "{{STORAGE_SIZE}}"
+  storageClassName: local-path
+
+---
+# =============================================================================
+# APP DEPLOYMENT TEMPLATE
+# =============================================================================
+# Deployment voor een specifieke app binnen de tenant
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{APP_TYPE}}
+  namespace: tenant-{{TENANT_SLUG}}
+  labels:
+    app: {{APP_TYPE}}
+    tenant: {{TENANT_SLUG}}
+    eusuite.eu/tenant-id: "{{TENANT_ID}}"
+spec:
+  replicas: {{REPLICAS}}
+  selector:
+    matchLabels:
+      app: {{APP_TYPE}}
+      tenant: {{TENANT_SLUG}}
+  template:
+    metadata:
+      labels:
+        app: {{APP_TYPE}}
+        tenant: {{TENANT_SLUG}}
+        eusuite.eu/tenant-id: "{{TENANT_ID}}"
+    spec:
+      containers:
+        - name: {{APP_TYPE}}
+          image: ghcr.io/dylan0165/eusuite-{{APP_TYPE}}:{{IMAGE_TAG}}
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: tenant-config
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: tenant-secrets
+                  key: database-url
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: tenant-secrets
+                  key: jwt-secret
+          resources:
+            requests:
+              memory: "{{MEMORY_REQUEST}}"
+              cpu: "{{CPU_REQUEST}}"
+            limits:
+              memory: "{{MEMORY_LIMIT}}"
+              cpu: "{{CPU_LIMIT}}"
+          volumeMounts:
+            - name: storage
+              mountPath: /app/uploads
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+      volumes:
+        - name: storage
+          persistentVolumeClaim:
+            claimName: tenant-storage
+
+---
+# Service voor de app
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{APP_TYPE}}
+  namespace: tenant-{{TENANT_SLUG}}
+  labels:
+    app: {{APP_TYPE}}
+    tenant: {{TENANT_SLUG}}
+spec:
+  selector:
+    app: {{APP_TYPE}}
+    tenant: {{TENANT_SLUG}}
+  ports:
+    - port: 8000
+      targetPort: 8000
+      nodePort: {{NODEPORT}}
+  type: NodePort
+
+---
+# Network Policy - Allow only from ingress
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{APP_TYPE}}-network-policy
+  namespace: tenant-{{TENANT_SLUG}}
+spec:
+  podSelector:
+    matchLabels:
+      app: {{APP_TYPE}}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow from Traefik ingress
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: traefik
+      ports:
+        - protocol: TCP
+          port: 8000
+    # Allow from same tenant namespace
+    - from:
+        - podSelector: {}
+  egress:
+    # Allow DNS
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: UDP
+          port: 53
+    # Allow to database
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: eusuite-platform
+      ports:
+        - protocol: TCP
+          port: 5432
+    # Allow to Redis
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: eusuite-platform
+      ports:
+        - protocol: TCP
+          port: 6379

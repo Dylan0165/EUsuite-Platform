@@ -1,0 +1,64 @@
+name: CD Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      # 1. Docker Login
+      - name: Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      # 1.5 Debug Docker
+      - name: Check Docker Permissions
+        run: docker info
+
+      # 2. Build & Push Backend (Shell commands are more stable on self-hosted)
+      - name: Build and Push Backend
+        run: |
+          cd backend
+          docker build -t fxpandaa/platform:backend-latest .
+          docker push fxpandaa/platform:backend-latest
+
+      # 3. Build & Push Frontend
+      - name: Build and Push Frontend
+        run: |
+          cd frontend
+          docker build -t fxpandaa/platform:frontend-latest .
+          docker push fxpandaa/platform:frontend-latest
+
+      # 3.5 Build & Push Admin Frontend
+      - name: Build and Push Admin Frontend
+        run: |
+          cd admin-frontend
+          docker build -t fxpandaa/platform:admin-frontend-latest .
+          docker push fxpandaa/platform:admin-frontend-latest
+
+      # 4. Deploy direct op de VM (via kubectl)
+      - name: Deploy to K3s
+        run: |
+          # 1. Apply de configuratie (maakt namespace aan)
+          sudo kubectl apply -f k8s/platform.yaml --kubeconfig=/etc/rancher/k3s/k3s.yaml
+
+          # 2. Maak de 'regcred' secret aan in Kubernetes (zodat hij mag pullen)
+          sudo kubectl create secret docker-registry regcred \
+            --docker-server=https://index.docker.io/v1/ \
+            --docker-username=${{ secrets.DOCKER_USERNAME }} \
+            --docker-password=${{ secrets.DOCKER_PASSWORD }} \
+            -n admin-platform \
+            --dry-run=client -o yaml | sudo kubectl apply -f - --kubeconfig=/etc/rancher/k3s/k3s.yaml
+          
+          # 3. Forceer een update van de pods
+          sudo kubectl rollout restart deployment/backend -n admin-platform --kubeconfig=/etc/rancher/k3s/k3s.yaml
+          sudo kubectl rollout restart deployment/frontend -n admin-platform --kubeconfig=/etc/rancher/k3s/k3s.yaml
+          sudo kubectl rollout restart deployment/admin-frontend -n admin-platform --kubeconfig=/etc/rancher/k3s/k3s.yaml

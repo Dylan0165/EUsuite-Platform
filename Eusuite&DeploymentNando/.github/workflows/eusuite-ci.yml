@@ -1,0 +1,236 @@
+name: EUSUITE CI/CD
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  KUBE_NAMESPACE: eucloud
+  IMG_DASHBOARD: eusuite-dashboard
+  IMG_EUCLOUD_FRONT: eucloud-frontend
+  IMG_EUCLOUD_BACK: eucloud-backend
+  IMG_LOGIN: eusuite-login
+  IMG_TYPE: eutype-frontend
+  IMG_EUMAIL_FRONT: eumail-frontend
+  IMG_EUMAIL_BACK: eumail-backend
+  IMG_EUGROUPS_FRONT: eugroups-frontend
+  IMG_EUGROUPS_BACK: eugroups-backend
+  IMG_EUADMIN_FRONT: euadmin-frontend
+  IMG_EUADMIN_BACK: euadmin-backend
+
+jobs:
+  build-and-deploy:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # --- BUILD & PUSH ---
+      - name: Build Dashboard
+        uses: docker/build-push-action@v5
+        with:
+          context: ./apps/dashboard
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/${{ env.IMG_DASHBOARD }}:latest
+            ${{ secrets.DOCKER_USERNAME }}/${{ env.IMG_DASHBOARD }}:${{ github.sha }}
+
+      - name: Build Login
+        uses: docker/build-push-action@v5
+        with:
+          context: ./apps/login
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/${{ env.IMG_LOGIN }}:latest
+            ${{ secrets.DOCKER_USERNAME }}/${{ env.IMG_LOGIN }}:${{ github.sha }}
+
+      - name: Build EUCloud Frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./apps/eucloud-frontend
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/${{ env.IMG_EUCLOUD_FRONT }}:latest
+            ${{ secrets.DOCKER_USERNAME }}/${{ env.IMG_EUCLOUD_FRONT }}:${{ github.sha }}
+
+      - name: Build EUCloud Backend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./apps/eucloud-backend
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/${{ env.IMG_EUCLOUD_BACK }}:latest
+            ${{ secrets.DOCKER_USERNAME }}/${{ env.IMG_EUCLOUD_BACK }}:${{ github.sha }}
+
+      - name: Build EUType
+        uses: docker/build-push-action@v5
+        with:
+          context: ./apps/eutype
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/${{ env.IMG_TYPE }}:latest
+            ${{ secrets.DOCKER_USERNAME }}/${{ env.IMG_TYPE }}:${{ github.sha }}
+
+      - name: Build EUMail Frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./apps/eumail-frontend
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/${{ env.IMG_EUMAIL_FRONT }}:latest
+            ${{ secrets.DOCKER_USERNAME }}/${{ env.IMG_EUMAIL_FRONT }}:${{ github.sha }}
+
+      - name: Build EUMail Backend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./apps/eumail-backend
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/${{ env.IMG_EUMAIL_BACK }}:latest
+            ${{ secrets.DOCKER_USERNAME }}/${{ env.IMG_EUMAIL_BACK }}:${{ github.sha }}
+
+      - name: Build EUGroups Frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./apps/eugroups-frontend
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/${{ env.IMG_EUGROUPS_FRONT }}:latest
+            ${{ secrets.DOCKER_USERNAME }}/${{ env.IMG_EUGROUPS_FRONT }}:${{ github.sha }}
+
+      - name: Build EUGroups Backend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./apps/eugroups-backend
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/${{ env.IMG_EUGROUPS_BACK }}:latest
+            ${{ secrets.DOCKER_USERNAME }}/${{ env.IMG_EUGROUPS_BACK }}:${{ github.sha }}
+
+      - name: Build EUAdmin Frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./apps/euadmin-frontend
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/${{ env.IMG_EUADMIN_FRONT }}:latest
+            ${{ secrets.DOCKER_USERNAME }}/${{ env.IMG_EUADMIN_FRONT }}:${{ github.sha }}
+
+      - name: Build EUAdmin Backend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./apps/euadmin-backend
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/${{ env.IMG_EUADMIN_BACK }}:latest
+            ${{ secrets.DOCKER_USERNAME }}/${{ env.IMG_EUADMIN_BACK }}:${{ github.sha }}
+
+      # --- DEPLOY ---
+      - name: Ensure Namespace & Secrets
+        run: |
+          kubectl create namespace ${{ env.KUBE_NAMESPACE }} --dry-run=client -o yaml | kubectl apply -f -
+          kubectl create secret docker-registry docker-registry-secret \
+            --docker-server=https://index.docker.io/v1/ \
+            --docker-username=${{ secrets.DOCKER_USERNAME }} \
+            --docker-password=${{ secrets.DOCKER_TOKEN }} \
+            --docker-email=${{ secrets.DOCKER_USERNAME }}@email.com \
+            -n ${{ env.KUBE_NAMESPACE }} \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Deploy EUCloud Backend
+        run: |
+          # Update image
+          sed -i 's|image: .*eucloud-backend:.*|image: ${{ secrets.DOCKER_USERNAME }}/${{ env.IMG_EUCLOUD_BACK }}:${{ github.sha }}|g' infrastructure/k8s/eucloud-backend/deployment.yaml
+          # Apply
+          kubectl apply -f infrastructure/k8s/eucloud-backend/deployment.yaml -n ${{ env.KUBE_NAMESPACE }}
+          kubectl apply -f infrastructure/k8s/eucloud-backend/service.yaml -n ${{ env.KUBE_NAMESPACE }}
+
+      - name: Deploy EUCloud Frontend
+        run: |
+          sed -i 's|image: .*eucloud-frontend:.*|image: ${{ secrets.DOCKER_USERNAME }}/${{ env.IMG_EUCLOUD_FRONT }}:${{ github.sha }}|g' infrastructure/k8s/eucloud-frontend/deployment.yaml
+          kubectl apply -f infrastructure/k8s/eucloud-frontend/deployment.yaml -n ${{ env.KUBE_NAMESPACE }}
+          kubectl apply -f infrastructure/k8s/eucloud-frontend/service.yaml -n ${{ env.KUBE_NAMESPACE }}
+
+      - name: Deploy Dashboard
+        run: |
+          sed -i 's|image: .*eusuite-dashboard:.*|image: ${{ secrets.DOCKER_USERNAME }}/${{ env.IMG_DASHBOARD }}:${{ github.sha }}|g' infrastructure/k8s/dashboard/deployment.yaml
+          kubectl apply -f infrastructure/k8s/dashboard/deployment.yaml -n ${{ env.KUBE_NAMESPACE }}
+          kubectl apply -f infrastructure/k8s/dashboard/service.yaml -n ${{ env.KUBE_NAMESPACE }}
+
+      - name: Deploy Login
+        run: |
+          sed -i 's|image: .*eusuite-login:.*|image: ${{ secrets.DOCKER_USERNAME }}/${{ env.IMG_LOGIN }}:${{ github.sha }}|g' infrastructure/k8s/login/deployment.yaml
+          kubectl apply -f infrastructure/k8s/login/deployment.yaml -n ${{ env.KUBE_NAMESPACE }}
+          kubectl apply -f infrastructure/k8s/login/service.yaml -n ${{ env.KUBE_NAMESPACE }}
+
+      - name: Deploy EUType
+        run: |
+          sed -i 's|image: .*eutype-frontend:.*|image: ${{ secrets.DOCKER_USERNAME }}/${{ env.IMG_TYPE }}:${{ github.sha }}|g' infrastructure/k8s/eutype/deployment.yaml
+          kubectl apply -f infrastructure/k8s/eutype/deployment.yaml -n ${{ env.KUBE_NAMESPACE }}
+          kubectl apply -f infrastructure/k8s/eutype/service.yaml -n ${{ env.KUBE_NAMESPACE }}
+
+      - name: Deploy EUMail Backend
+        run: |
+          sed -i 's|image: .*eumail-backend:.*|image: ${{ secrets.DOCKER_USERNAME }}/${{ env.IMG_EUMAIL_BACK }}:${{ github.sha }}|g' k8s/eumail/eumail-backend-deployment.yaml
+          kubectl apply -f k8s/eumail/eumail-backend-deployment.yaml -n ${{ env.KUBE_NAMESPACE }}
+          kubectl apply -f k8s/eumail/eumail-backend-service.yaml -n ${{ env.KUBE_NAMESPACE }}
+
+      - name: Deploy EUMail Frontend
+        run: |
+          sed -i 's|image: .*eumail-frontend:.*|image: ${{ secrets.DOCKER_USERNAME }}/${{ env.IMG_EUMAIL_FRONT }}:${{ github.sha }}|g' k8s/eumail/eumail-frontend-deployment.yaml
+          kubectl apply -f k8s/eumail/eumail-frontend-deployment.yaml -n ${{ env.KUBE_NAMESPACE }}
+          kubectl apply -f k8s/eumail/eumail-frontend-service.yaml -n ${{ env.KUBE_NAMESPACE }}
+
+      - name: Deploy EUGroups Backend
+        run: |
+          sed -i 's|image: .*eugroups-backend:.*|image: ${{ secrets.DOCKER_USERNAME }}/${{ env.IMG_EUGROUPS_BACK }}:${{ github.sha }}|g' k8s/eugroups/eugroups-backend-deployment.yaml
+          kubectl apply -f k8s/eugroups/eugroups-backend-deployment.yaml -n ${{ env.KUBE_NAMESPACE }}
+          kubectl apply -f k8s/eugroups/eugroups-backend-service.yaml -n ${{ env.KUBE_NAMESPACE }}
+
+      - name: Deploy EUGroups Frontend
+        run: |
+          sed -i 's|image: .*eugroups-frontend:.*|image: ${{ secrets.DOCKER_USERNAME }}/${{ env.IMG_EUGROUPS_FRONT }}:${{ github.sha }}|g' k8s/eugroups/eugroups-frontend-deployment.yaml
+          kubectl apply -f k8s/eugroups/eugroups-frontend-deployment.yaml -n ${{ env.KUBE_NAMESPACE }}
+          kubectl apply -f k8s/eugroups/eugroups-frontend-service.yaml -n ${{ env.KUBE_NAMESPACE }}
+
+      - name: Deploy EUAdmin Secrets
+        run: |
+          kubectl apply -f k8s/euadmin/euadmin-secrets.yaml -n ${{ env.KUBE_NAMESPACE }}
+          kubectl apply -f k8s/euadmin/euadmin-rbac.yaml
+
+      - name: Deploy EUAdmin Backend
+        run: |
+          sed -i 's|image: .*euadmin-backend:.*|image: ${{ secrets.DOCKER_USERNAME }}/${{ env.IMG_EUADMIN_BACK }}:${{ github.sha }}|g' k8s/euadmin/euadmin-backend-deployment.yaml
+          kubectl apply -f k8s/euadmin/euadmin-backend-deployment.yaml -n ${{ env.KUBE_NAMESPACE }}
+          kubectl apply -f k8s/euadmin/euadmin-backend-service.yaml -n ${{ env.KUBE_NAMESPACE }}
+
+      - name: Deploy EUAdmin Frontend
+        run: |
+          sed -i 's|image: .*euadmin-frontend:.*|image: ${{ secrets.DOCKER_USERNAME }}/${{ env.IMG_EUADMIN_FRONT }}:${{ github.sha }}|g' k8s/euadmin/euadmin-frontend-deployment.yaml
+          kubectl apply -f k8s/euadmin/euadmin-frontend-deployment.yaml -n ${{ env.KUBE_NAMESPACE }}
+          kubectl apply -f k8s/euadmin/euadmin-frontend-service.yaml -n ${{ env.KUBE_NAMESPACE }}
+
+      - name: Force Restart & Check Status
+        run: |
+          kubectl rollout restart deployment -n ${{ env.KUBE_NAMESPACE }}
+          kubectl rollout status deployment/eucloud-backend -n ${{ env.KUBE_NAMESPACE }}
+          kubectl rollout status deployment/eucloud-frontend -n ${{ env.KUBE_NAMESPACE }}
+          kubectl rollout status deployment/eusuite-dashboard -n ${{ env.KUBE_NAMESPACE }}
+          kubectl rollout status deployment/eusuite-login -n ${{ env.KUBE_NAMESPACE }}
+          kubectl rollout status deployment/eutype-frontend -n ${{ env.KUBE_NAMESPACE }}
+          kubectl rollout status deployment/eumail-backend -n ${{ env.KUBE_NAMESPACE }}
+          kubectl rollout status deployment/eumail-frontend -n ${{ env.KUBE_NAMESPACE }}
+          kubectl rollout status deployment/eugroups-backend -n ${{ env.KUBE_NAMESPACE }}
+          kubectl rollout status deployment/eugroups-frontend -n ${{ env.KUBE_NAMESPACE }}
+          kubectl rollout status deployment/euadmin-backend -n ${{ env.KUBE_NAMESPACE }}
+          kubectl rollout status deployment/euadmin-frontend -n ${{ env.KUBE_NAMESPACE }}
