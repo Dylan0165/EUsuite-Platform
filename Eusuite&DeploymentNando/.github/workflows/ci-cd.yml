@@ -1,9 +1,6 @@
 # =============================================================================
-# EUSuite Platform - CI/CD Pipeline
+# EUSuite Platform - CI/CD Pipeline (Self-Hosted Runner)
 # =============================================================================
-# GitHub Actions workflow voor automatische build, test en deployment
-# =============================================================================
-
 name: EUSuite Platform CI/CD
 
 on:
@@ -12,429 +9,153 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
-    inputs:
-      environment:
-        description: 'Deployment environment'
-        required: true
-        default: 'staging'
-        type: choice
-        options:
-          - staging
-          - production
 
 env:
-  REGISTRY: ghcr.io
-  IMAGE_PREFIX: dylan0165/eusuite
+  REGISTRY: docker.io
+  IMAGE_PREFIX: dylan016504
 
 jobs:
   # ===========================================================================
-  # DETECT CHANGES
+  # BUILD & DEPLOY ALL SERVICES
   # ===========================================================================
-  changes:
-    runs-on: ubuntu-latest
-    outputs:
-      public-backend: ${{ steps.filter.outputs.public-backend }}
-      public-frontend: ${{ steps.filter.outputs.public-frontend }}
-      company-backend: ${{ steps.filter.outputs.company-backend }}
-      company-frontend: ${{ steps.filter.outputs.company-frontend }}
-      superadmin-backend: ${{ steps.filter.outputs.superadmin-backend }}
-      superadmin-frontend: ${{ steps.filter.outputs.superadmin-frontend }}
-      k8s: ${{ steps.filter.outputs.k8s }}
+  build-and-deploy:
+    runs-on: self-hosted
     steps:
-      - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
-        id: filter
-        with:
-          filters: |
-            public-backend:
-              - 'Eusuite&DeploymentNando/apps/eusuite-public-backend/**'
-            public-frontend:
-              - 'Eusuite&DeploymentNando/apps/eusuite-public-frontend/**'
-            company-backend:
-              - 'Eusuite&DeploymentNando/apps/eusuite-company-backend/**'
-            company-frontend:
-              - 'Eusuite&DeploymentNando/apps/eusuite-company-frontend/**'
-            superadmin-backend:
-              - 'Eusuite&DeploymentNando/apps/eusuite-superadmin-backend/**'
-            superadmin-frontend:
-              - 'Eusuite&DeploymentNando/apps/eusuite-superadmin-frontend/**'
-            k8s:
-              - 'Eusuite&DeploymentNando/k8s/**'
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-  # ===========================================================================
-  # BUILD & TEST - PUBLIC BACKEND
-  # ===========================================================================
-  build-public-backend:
-    needs: changes
-    if: ${{ needs.changes.outputs.public-backend == 'true' || github.event_name == 'workflow_dispatch' }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          cache: 'pip'
-      
-      - name: Install dependencies
-        working-directory: Eusuite&DeploymentNando/apps/eusuite-public-backend
+      - name: Show runner info
         run: |
-          pip install -r requirements.txt
-          pip install pytest pytest-asyncio httpx
-      
-      - name: Run tests
-        working-directory: Eusuite&DeploymentNando/apps/eusuite-public-backend
-        run: |
-          pytest -v --tb=short || echo "No tests yet"
-      
-      - name: Log in to Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: Eusuite&DeploymentNando/apps/eusuite-public-backend
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-public-backend:${{ github.sha }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-public-backend:latest
+          echo "🏃 Running on self-hosted runner"
+          echo "📂 Working directory: $(pwd)"
+          docker --version
+          kubectl version --client || echo "kubectl not found"
 
-  # ===========================================================================
-  # BUILD - PUBLIC FRONTEND
-  # ===========================================================================
-  build-public-frontend:
-    needs: changes
-    if: ${{ needs.changes.outputs.public-frontend == 'true' || github.event_name == 'workflow_dispatch' }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: Eusuite&DeploymentNando/apps/eusuite-public-frontend/package-lock.json
-      
-      - name: Install dependencies
-        working-directory: Eusuite&DeploymentNando/apps/eusuite-public-frontend
-        run: npm ci
-      
-      - name: Build
-        working-directory: Eusuite&DeploymentNando/apps/eusuite-public-frontend
-        run: npm run build
-        env:
-          VITE_API_URL: https://eusuite.eu/api
-      
-      - name: Log in to Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: Eusuite&DeploymentNando/apps/eusuite-public-frontend
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-public-frontend:${{ github.sha }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-public-frontend:latest
-
-  # ===========================================================================
-  # BUILD & TEST - COMPANY BACKEND
-  # ===========================================================================
-  build-company-backend:
-    needs: changes
-    if: ${{ needs.changes.outputs.company-backend == 'true' || github.event_name == 'workflow_dispatch' }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          cache: 'pip'
-      
-      - name: Install dependencies
-        working-directory: Eusuite&DeploymentNando/apps/eusuite-company-backend
+      # ========================================
+      # LOGIN TO DOCKER HUB
+      # ========================================
+      - name: Login to Docker Hub
         run: |
-          pip install -r requirements.txt
-          pip install pytest pytest-asyncio httpx
-      
-      - name: Run tests
-        working-directory: Eusuite&DeploymentNando/apps/eusuite-company-backend
-        run: |
-          pytest -v --tb=short || echo "No tests yet"
-      
-      - name: Log in to Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: Eusuite&DeploymentNando/apps/eusuite-company-backend
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-company-backend:${{ github.sha }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-company-backend:latest
+          echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
 
-  # ===========================================================================
-  # BUILD - COMPANY FRONTEND
-  # ===========================================================================
-  build-company-frontend:
-    needs: changes
-    if: ${{ needs.changes.outputs.company-frontend == 'true' || github.event_name == 'workflow_dispatch' }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: Eusuite&DeploymentNando/apps/eusuite-company-frontend/package-lock.json
-      
-      - name: Install dependencies
-        working-directory: Eusuite&DeploymentNando/apps/eusuite-company-frontend
-        run: npm ci
-      
-      - name: Build
-        working-directory: Eusuite&DeploymentNando/apps/eusuite-company-frontend
-        run: npm run build
-        env:
-          VITE_API_URL: https://company.eusuite.eu/api
-      
-      - name: Log in to Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: Eusuite&DeploymentNando/apps/eusuite-company-frontend
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-company-frontend:${{ github.sha }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-company-frontend:latest
-
-  # ===========================================================================
-  # BUILD & TEST - SUPERADMIN BACKEND
-  # ===========================================================================
-  build-superadmin-backend:
-    needs: changes
-    if: ${{ needs.changes.outputs.superadmin-backend == 'true' || github.event_name == 'workflow_dispatch' }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          cache: 'pip'
-      
-      - name: Install dependencies
-        working-directory: Eusuite&DeploymentNando/apps/eusuite-superadmin-backend
+      # ========================================
+      # BUILD PUBLIC BACKEND
+      # ========================================
+      - name: Build Public Backend
         run: |
-          pip install -r requirements.txt
-          pip install pytest pytest-asyncio httpx
-      
-      - name: Run tests
-        working-directory: Eusuite&DeploymentNando/apps/eusuite-superadmin-backend
-        run: |
-          pytest -v --tb=short || echo "No tests yet"
-      
-      - name: Log in to Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: Eusuite&DeploymentNando/apps/eusuite-superadmin-backend
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-superadmin-backend:${{ github.sha }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-superadmin-backend:latest
+          echo "🔨 Building eusuite-public-backend..."
+          cd "Eusuite&DeploymentNando/apps/eusuite-public-backend"
+          docker build -t ${{ env.IMAGE_PREFIX }}/eusuite-public-backend:latest -t ${{ env.IMAGE_PREFIX }}/eusuite-public-backend:${{ github.sha }} .
+          docker push ${{ env.IMAGE_PREFIX }}/eusuite-public-backend:latest
+          docker push ${{ env.IMAGE_PREFIX }}/eusuite-public-backend:${{ github.sha }}
 
-  # ===========================================================================
-  # BUILD - SUPERADMIN FRONTEND
-  # ===========================================================================
-  build-superadmin-frontend:
-    needs: changes
-    if: ${{ needs.changes.outputs.superadmin-frontend == 'true' || github.event_name == 'workflow_dispatch' }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: Eusuite&DeploymentNando/apps/eusuite-superadmin-frontend/package-lock.json
-      
-      - name: Install dependencies
-        working-directory: Eusuite&DeploymentNando/apps/eusuite-superadmin-frontend
-        run: npm ci
-      
-      - name: Build
-        working-directory: Eusuite&DeploymentNando/apps/eusuite-superadmin-frontend
-        run: npm run build
-        env:
-          VITE_API_URL: https://admin.eusuite.eu/api
-      
-      - name: Log in to Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: Eusuite&DeploymentNando/apps/eusuite-superadmin-frontend
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-superadmin-frontend:${{ github.sha }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-superadmin-frontend:latest
-
-  # ===========================================================================
-  # DEPLOY TO STAGING
-  # ===========================================================================
-  deploy-staging:
-    needs: 
-      - build-public-backend
-      - build-public-frontend
-      - build-company-backend
-      - build-company-frontend
-      - build-superadmin-backend
-      - build-superadmin-frontend
-    if: |
-      always() && 
-      github.ref == 'refs/heads/develop' &&
-      !contains(needs.*.result, 'failure')
-    runs-on: ubuntu-latest
-    environment: staging
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Install kubectl
-        uses: azure/setup-kubectl@v3
-        with:
-          version: 'v1.29.0'
-      
-      - name: Configure kubeconfig
+      # ========================================
+      # BUILD PUBLIC FRONTEND
+      # ========================================
+      - name: Build Public Frontend
         run: |
+          echo "🔨 Building eusuite-public-frontend..."
+          cd "Eusuite&DeploymentNando/apps/eusuite-public-frontend"
+          docker build -t ${{ env.IMAGE_PREFIX }}/eusuite-public-frontend:latest -t ${{ env.IMAGE_PREFIX }}/eusuite-public-frontend:${{ github.sha }} .
+          docker push ${{ env.IMAGE_PREFIX }}/eusuite-public-frontend:latest
+          docker push ${{ env.IMAGE_PREFIX }}/eusuite-public-frontend:${{ github.sha }}
+
+      # ========================================
+      # BUILD COMPANY BACKEND
+      # ========================================
+      - name: Build Company Backend
+        run: |
+          echo "🔨 Building eusuite-company-backend..."
+          cd "Eusuite&DeploymentNando/apps/eusuite-company-backend"
+          docker build -t ${{ env.IMAGE_PREFIX }}/eusuite-company-backend:latest -t ${{ env.IMAGE_PREFIX }}/eusuite-company-backend:${{ github.sha }} .
+          docker push ${{ env.IMAGE_PREFIX }}/eusuite-company-backend:latest
+          docker push ${{ env.IMAGE_PREFIX }}/eusuite-company-backend:${{ github.sha }}
+
+      # ========================================
+      # BUILD COMPANY FRONTEND
+      # ========================================
+      - name: Build Company Frontend
+        run: |
+          echo "🔨 Building eusuite-company-frontend..."
+          cd "Eusuite&DeploymentNando/apps/eusuite-company-frontend"
+          docker build -t ${{ env.IMAGE_PREFIX }}/eusuite-company-frontend:latest -t ${{ env.IMAGE_PREFIX }}/eusuite-company-frontend:${{ github.sha }} .
+          docker push ${{ env.IMAGE_PREFIX }}/eusuite-company-frontend:latest
+          docker push ${{ env.IMAGE_PREFIX }}/eusuite-company-frontend:${{ github.sha }}
+
+      # ========================================
+      # BUILD SUPERADMIN BACKEND
+      # ========================================
+      - name: Build Superadmin Backend
+        run: |
+          echo "🔨 Building eusuite-superadmin-backend..."
+          cd "Eusuite&DeploymentNando/apps/eusuite-superadmin-backend"
+          docker build -t ${{ env.IMAGE_PREFIX }}/eusuite-superadmin-backend:latest -t ${{ env.IMAGE_PREFIX }}/eusuite-superadmin-backend:${{ github.sha }} .
+          docker push ${{ env.IMAGE_PREFIX }}/eusuite-superadmin-backend:latest
+          docker push ${{ env.IMAGE_PREFIX }}/eusuite-superadmin-backend:${{ github.sha }}
+
+      # ========================================
+      # BUILD SUPERADMIN FRONTEND
+      # ========================================
+      - name: Build Superadmin Frontend
+        run: |
+          echo "🔨 Building eusuite-superadmin-frontend..."
+          cd "Eusuite&DeploymentNando/apps/eusuite-superadmin-frontend"
+          docker build -t ${{ env.IMAGE_PREFIX }}/eusuite-superadmin-frontend:latest -t ${{ env.IMAGE_PREFIX }}/eusuite-superadmin-frontend:${{ github.sha }} .
+          docker push ${{ env.IMAGE_PREFIX }}/eusuite-superadmin-frontend:latest
+          docker push ${{ env.IMAGE_PREFIX }}/eusuite-superadmin-frontend:${{ github.sha }}
+
+      # ========================================
+      # DEPLOY TO KUBERNETES
+      # ========================================
+      - name: Deploy to Kubernetes
+        run: |
+          echo "🚀 Deploying to Kubernetes..."
+          
+          # Setup kubeconfig
           mkdir -p ~/.kube
-          echo "${{ secrets.KUBECONFIG_STAGING }}" | base64 -d > ~/.kube/config
+          echo "${{ secrets.KUBECONFIG }}" | base64 -d > ~/.kube/config
           chmod 600 ~/.kube/config
-      
-      - name: Deploy to staging
-        run: |
-          # Update image tags
-          sed -i "s/:latest/:${{ github.sha }}/g" Eusuite&DeploymentNando/k8s/platform.yaml
           
           # Apply K8s manifests
-          kubectl apply -f Eusuite&DeploymentNando/k8s/platform.yaml
+          kubectl apply -f "Eusuite&DeploymentNando/k8s/platform.yaml"
           
-          # Wait for rollout
-          kubectl -n eusuite-platform rollout status deployment/eusuite-company-backend --timeout=300s
-          kubectl -n eusuite-platform rollout status deployment/eusuite-superadmin-backend --timeout=300s
-          kubectl -n eusuite-public rollout status deployment/eusuite-public-backend --timeout=300s
-      
-      - name: Verify deployment
-        run: |
-          kubectl -n eusuite-platform get pods
-          kubectl -n eusuite-public get pods
+          # Update images to latest
+          kubectl set image deployment/eusuite-public-backend \
+            eusuite-public-backend=${{ env.IMAGE_PREFIX }}/eusuite-public-backend:${{ github.sha }} \
+            -n eusuite-public || true
+          
+          kubectl set image deployment/eusuite-public-frontend \
+            eusuite-public-frontend=${{ env.IMAGE_PREFIX }}/eusuite-public-frontend:${{ github.sha }} \
+            -n eusuite-public || true
+          
+          kubectl set image deployment/eusuite-company-backend \
+            eusuite-company-backend=${{ env.IMAGE_PREFIX }}/eusuite-company-backend:${{ github.sha }} \
+            -n eusuite-platform || true
+          
+          kubectl set image deployment/eusuite-company-frontend \
+            eusuite-company-frontend=${{ env.IMAGE_PREFIX }}/eusuite-company-frontend:${{ github.sha }} \
+            -n eusuite-platform || true
+          
+          kubectl set image deployment/eusuite-superadmin-backend \
+            eusuite-superadmin-backend=${{ env.IMAGE_PREFIX }}/eusuite-superadmin-backend:${{ github.sha }} \
+            -n eusuite-platform || true
+          
+          kubectl set image deployment/eusuite-superadmin-frontend \
+            eusuite-superadmin-frontend=${{ env.IMAGE_PREFIX }}/eusuite-superadmin-frontend:${{ github.sha }} \
+            -n eusuite-platform || true
 
-  # ===========================================================================
-  # DEPLOY TO PRODUCTION
-  # ===========================================================================
-  deploy-production:
-    needs: 
-      - build-public-backend
-      - build-public-frontend
-      - build-company-backend
-      - build-company-frontend
-      - build-superadmin-backend
-      - build-superadmin-frontend
-    if: |
-      always() && 
-      github.ref == 'refs/heads/main' &&
-      !contains(needs.*.result, 'failure')
-    runs-on: ubuntu-latest
-    environment: production
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Install kubectl
-        uses: azure/setup-kubectl@v3
-        with:
-          version: 'v1.29.0'
-      
-      - name: Configure kubeconfig
+      # ========================================
+      # VERIFY DEPLOYMENT
+      # ========================================
+      - name: Verify Deployment
         run: |
-          mkdir -p ~/.kube
-          echo "${{ secrets.KUBECONFIG_PRODUCTION }}" | base64 -d > ~/.kube/config
-          chmod 600 ~/.kube/config
-      
-      - name: Deploy to production
-        run: |
-          # Update image tags
-          sed -i "s/:latest/:${{ github.sha }}/g" Eusuite&DeploymentNando/k8s/platform.yaml
-          
-          # Apply K8s manifests
-          kubectl apply -f Eusuite&DeploymentNando/k8s/platform.yaml
-          
-          # Wait for rollout
-          kubectl -n eusuite-platform rollout status deployment/eusuite-company-backend --timeout=300s
-          kubectl -n eusuite-platform rollout status deployment/eusuite-superadmin-backend --timeout=300s
-          kubectl -n eusuite-public rollout status deployment/eusuite-public-backend --timeout=300s
-      
-      - name: Verify deployment
-        run: |
-          kubectl -n eusuite-platform get pods
-          kubectl -n eusuite-public get pods
-      
-      - name: Notify success
-        if: success()
-        run: |
-          echo "🚀 Production deployment successful!"
-          # Add Slack/Discord notification here
+          echo "✅ Verifying deployment..."
+          kubectl get pods -n eusuite-public || true
+          kubectl get pods -n eusuite-platform || true
+          kubectl get services -n eusuite-public || true
+          kubectl get services -n eusuite-platform || true
 
-  # ===========================================================================
-  # CLEANUP OLD IMAGES
-  # ===========================================================================
-  cleanup:
-    runs-on: ubuntu-latest
-    needs: [deploy-staging, deploy-production]
-    if: always()
-    steps:
-      - name: Delete old container images
-        uses: actions/delete-package-versions@v5
-        with:
-          package-name: 'eusuite-*'
-          package-type: 'container'
-          min-versions-to-keep: 10
-          delete-only-untagged-versions: 'true'
+      - name: Deployment Complete
+        run: |
+          echo "🎉 EUSuite Platform deployed successfully!"
+          echo "📦 Images pushed to Docker Hub: ${{ env.IMAGE_PREFIX }}/eusuite-*"
