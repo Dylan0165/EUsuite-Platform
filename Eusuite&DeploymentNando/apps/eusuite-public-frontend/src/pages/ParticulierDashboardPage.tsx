@@ -64,33 +64,6 @@ const EUSUITE_APPS = [
   },
 ];
 
-// Reserved for future subscription plan display
-const _SUBSCRIPTION_PLANS = [
-  {
-    id: 'gratis',
-    name: 'Gratis',
-    price: 0,
-    storage: 5,
-    features: ['5 GB opslag', 'Alle basis apps', 'EU gehost', '1 gebruiker'],
-    current: true,
-  },
-  {
-    id: 'particulier-pro',
-    name: 'Pro',
-    price: 4.99,
-    storage: 100,
-    features: ['100 GB opslag', 'Alle apps', 'Priority support', 'Offline sync'],
-    recommended: true,
-  },
-  {
-    id: 'particulier-familie',
-    name: 'Familie',
-    price: 9.99,
-    storage: 500,
-    features: ['500 GB opslag', 'Tot 6 gezinsleden', 'Gedeelde folders', 'Alle features'],
-  },
-];
-
 const ParticulierDashboardPage: FC = () => {
   const { user, isAuthenticated, logout } = useAuthStore();
   const navigate = useNavigate();
