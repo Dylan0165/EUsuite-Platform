@@ -1,0 +1,161 @@
+# =============================================================================
+# EUSuite Platform - CI/CD Pipeline (Self-Hosted Runner)
+# =============================================================================
+name: EUSuite Platform CI/CD
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  REGISTRY: docker.io
+  IMAGE_PREFIX: dylan016504
+
+jobs:
+  # ===========================================================================
+  # BUILD & DEPLOY ALL SERVICES
+  # ===========================================================================
+  build-and-deploy:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Show runner info
+        run: |
+          echo "🏃 Running on self-hosted runner"
+          echo "📂 Working directory: $(pwd)"
+          docker --version
+          kubectl version --client || echo "kubectl not found"
+
+      # ========================================
+      # LOGIN TO DOCKER HUB
+      # ========================================
+      - name: Login to Docker Hub
+        run: |
+          echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+
+      # ========================================
+      # BUILD PUBLIC BACKEND
+      # ========================================
+      - name: Build Public Backend
+        run: |
+          echo "🔨 Building eusuite-public-backend..."
+          cd "Eusuite&DeploymentNando/apps/eusuite-public-backend"
+          docker build -t ${{ env.IMAGE_PREFIX }}/eusuite-public-backend:latest -t ${{ env.IMAGE_PREFIX }}/eusuite-public-backend:${{ github.sha }} .
+          docker push ${{ env.IMAGE_PREFIX }}/eusuite-public-backend:latest
+          docker push ${{ env.IMAGE_PREFIX }}/eusuite-public-backend:${{ github.sha }}
+
+      # ========================================
+      # BUILD PUBLIC FRONTEND
+      # ========================================
+      - name: Build Public Frontend
+        run: |
+          echo "🔨 Building eusuite-public-frontend..."
+          cd "Eusuite&DeploymentNando/apps/eusuite-public-frontend"
+          docker build -t ${{ env.IMAGE_PREFIX }}/eusuite-public-frontend:latest -t ${{ env.IMAGE_PREFIX }}/eusuite-public-frontend:${{ github.sha }} .
+          docker push ${{ env.IMAGE_PREFIX }}/eusuite-public-frontend:latest
+          docker push ${{ env.IMAGE_PREFIX }}/eusuite-public-frontend:${{ github.sha }}
+
+      # ========================================
+      # BUILD COMPANY BACKEND
+      # ========================================
+      - name: Build Company Backend
+        run: |
+          echo "🔨 Building eusuite-company-backend..."
+          cd "Eusuite&DeploymentNando/apps/eusuite-company-backend"
+          docker build -t ${{ env.IMAGE_PREFIX }}/eusuite-company-backend:latest -t ${{ env.IMAGE_PREFIX }}/eusuite-company-backend:${{ github.sha }} .
+          docker push ${{ env.IMAGE_PREFIX }}/eusuite-company-backend:latest
+          docker push ${{ env.IMAGE_PREFIX }}/eusuite-company-backend:${{ github.sha }}
+
+      # ========================================
+      # BUILD COMPANY FRONTEND
+      # ========================================
+      - name: Build Company Frontend
+        run: |
+          echo "🔨 Building eusuite-company-frontend..."
+          cd "Eusuite&DeploymentNando/apps/eusuite-company-frontend"
+          docker build -t ${{ env.IMAGE_PREFIX }}/eusuite-company-frontend:latest -t ${{ env.IMAGE_PREFIX }}/eusuite-company-frontend:${{ github.sha }} .
+          docker push ${{ env.IMAGE_PREFIX }}/eusuite-company-frontend:latest
+          docker push ${{ env.IMAGE_PREFIX }}/eusuite-company-frontend:${{ github.sha }}
+
+      # ========================================
+      # BUILD SUPERADMIN BACKEND
+      # ========================================
+      - name: Build Superadmin Backend
+        run: |
+          echo "🔨 Building eusuite-superadmin-backend..."
+          cd "Eusuite&DeploymentNando/apps/eusuite-superadmin-backend"
+          docker build -t ${{ env.IMAGE_PREFIX }}/eusuite-superadmin-backend:latest -t ${{ env.IMAGE_PREFIX }}/eusuite-superadmin-backend:${{ github.sha }} .
+          docker push ${{ env.IMAGE_PREFIX }}/eusuite-superadmin-backend:latest
+          docker push ${{ env.IMAGE_PREFIX }}/eusuite-superadmin-backend:${{ github.sha }}
+
+      # ========================================
+      # BUILD SUPERADMIN FRONTEND
+      # ========================================
+      - name: Build Superadmin Frontend
+        run: |
+          echo "🔨 Building eusuite-superadmin-frontend..."
+          cd "Eusuite&DeploymentNando/apps/eusuite-superadmin-frontend"
+          docker build -t ${{ env.IMAGE_PREFIX }}/eusuite-superadmin-frontend:latest -t ${{ env.IMAGE_PREFIX }}/eusuite-superadmin-frontend:${{ github.sha }} .
+          docker push ${{ env.IMAGE_PREFIX }}/eusuite-superadmin-frontend:latest
+          docker push ${{ env.IMAGE_PREFIX }}/eusuite-superadmin-frontend:${{ github.sha }}
+
+      # ========================================
+      # DEPLOY TO KUBERNETES
+      # ========================================
+      - name: Deploy to Kubernetes
+        run: |
+          echo "🚀 Deploying to Kubernetes..."
+          
+          # Setup kubeconfig
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+          
+          # Apply K8s manifests
+          kubectl apply -f "Eusuite&DeploymentNando/k8s/platform.yaml"
+          
+          # Update images to latest
+          kubectl set image deployment/eusuite-public-backend \
+            eusuite-public-backend=${{ env.IMAGE_PREFIX }}/eusuite-public-backend:${{ github.sha }} \
+            -n eusuite-public || true
+          
+          kubectl set image deployment/eusuite-public-frontend \
+            eusuite-public-frontend=${{ env.IMAGE_PREFIX }}/eusuite-public-frontend:${{ github.sha }} \
+            -n eusuite-public || true
+          
+          kubectl set image deployment/eusuite-company-backend \
+            eusuite-company-backend=${{ env.IMAGE_PREFIX }}/eusuite-company-backend:${{ github.sha }} \
+            -n eusuite-platform || true
+          
+          kubectl set image deployment/eusuite-company-frontend \
+            eusuite-company-frontend=${{ env.IMAGE_PREFIX }}/eusuite-company-frontend:${{ github.sha }} \
+            -n eusuite-platform || true
+          
+          kubectl set image deployment/eusuite-superadmin-backend \
+            eusuite-superadmin-backend=${{ env.IMAGE_PREFIX }}/eusuite-superadmin-backend:${{ github.sha }} \
+            -n eusuite-platform || true
+          
+          kubectl set image deployment/eusuite-superadmin-frontend \
+            eusuite-superadmin-frontend=${{ env.IMAGE_PREFIX }}/eusuite-superadmin-frontend:${{ github.sha }} \
+            -n eusuite-platform || true
+
+      # ========================================
+      # VERIFY DEPLOYMENT
+      # ========================================
+      - name: Verify Deployment
+        run: |
+          echo "✅ Verifying deployment..."
+          kubectl get pods -n eusuite-public || true
+          kubectl get pods -n eusuite-platform || true
+          kubectl get services -n eusuite-public || true
+          kubectl get services -n eusuite-platform || true
+
+      - name: Deployment Complete
+        run: |
+          echo "🎉 EUSuite Platform deployed successfully!"
+          echo "📦 Images pushed to Docker Hub: ${{ env.IMAGE_PREFIX }}/eusuite-*"
