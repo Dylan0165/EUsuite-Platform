@@ -1,5 +1,5 @@
 # Build stage
-FROM node:20-alpine as build
+FROM node:20-alpine AS build
 
 WORKDIR /app
 
@@ -12,7 +12,8 @@ RUN npm ci
 # Copy source files
 COPY . .
 
-# Build the application
+# Build the application (run tsc separately for better error output)
+RUN npx tsc --noEmit 2>&1 || (echo "TypeScript errors found" && npx tsc --noEmit && exit 1)
 RUN npm run build
 
 # Production stage
