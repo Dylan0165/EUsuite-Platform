@@ -5,7 +5,6 @@ import {
   PencilIcon,
   TrashIcon,
   CheckIcon,
-  XMarkIcon,
 } from '@heroicons/react/24/outline'
 import { Dialog, Transition } from '@headlessui/react'
 import { Fragment } from 'react'

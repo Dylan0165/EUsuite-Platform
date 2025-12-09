@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   MagnifyingGlassIcon,
-  DocumentTextIcon,
   FunnelIcon,
 } from '@heroicons/react/24/outline'
 import apiClient from '@/api/client'
@@ -63,8 +62,8 @@ export default function AuditLogsPage() {
   const totalCount = logsData?.total || logs.length
 
   // Get unique actions and resource types for filters
-  const uniqueActions = [...new Set(logs.map((l: AuditLog) => l.action))]
-  const uniqueResources = [...new Set(logs.map((l: AuditLog) => l.resource_type))]
+  const _uniqueActions = [...new Set(logs.map((l: AuditLog) => l.action))]
+  const _uniqueResources = [...new Set(logs.map((l: AuditLog) => l.resource_type))]
 
   if (isLoading) {
     return (

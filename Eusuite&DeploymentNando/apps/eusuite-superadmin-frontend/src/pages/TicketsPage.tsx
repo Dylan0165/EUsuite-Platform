@@ -6,8 +6,6 @@ import {
   TicketIcon,
   ChatBubbleLeftRightIcon,
   CheckCircleIcon,
-  ClockIcon,
-  ExclamationCircleIcon,
 } from '@heroicons/react/24/outline'
 import { Dialog, Transition } from '@headlessui/react'
 import { Fragment } from 'react'

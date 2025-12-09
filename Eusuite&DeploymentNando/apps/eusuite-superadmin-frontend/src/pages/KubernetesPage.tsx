@@ -1,12 +1,10 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   ServerIcon,
   CpuChipIcon,
   CircleStackIcon,
   ArrowPathIcon,
-  PlayIcon,
-  StopIcon,
   TrashIcon,
   ChartBarIcon,
   CloudIcon,
@@ -414,7 +412,7 @@ function StatCard({
 // Overview Tab
 function OverviewTab({
   pods,
-  deployments,
+  deployments: _deployments,
   namespaces,
   podsLoading,
 }: {
