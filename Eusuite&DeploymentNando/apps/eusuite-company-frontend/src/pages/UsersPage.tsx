@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom'
 import {
   MagnifyingGlassIcon,
   PlusIcon,
-  FunnelIcon,
   ArrowDownTrayIcon,
 } from '@heroicons/react/24/outline'
 import toast from 'react-hot-toast'

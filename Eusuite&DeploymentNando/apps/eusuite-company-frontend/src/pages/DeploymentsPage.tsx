@@ -1,8 +1,6 @@
 import { useState, useEffect } from 'react'
 import {
   CloudIcon,
-  PlayIcon,
-  StopIcon,
   ArrowPathIcon,
   TrashIcon,
   PlusIcon,
@@ -60,7 +58,7 @@ export default function DeploymentsPage() {
   }
 
   const handleAction = async (
-    deploymentId: number,
+    _deploymentId: number,
     appType: string,
     action: 'restart' | 'stop' | 'delete'
   ) => {
