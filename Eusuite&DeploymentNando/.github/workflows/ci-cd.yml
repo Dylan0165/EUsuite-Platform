@@ -1,4 +1,4 @@
-# =============================================================================
+                # =============================================================================
 # EUSuite Platform - CI/CD Pipeline (Self-Hosted Runner)
 # =============================================================================
 name: EUSuite Platform CI/CD
@@ -111,10 +111,17 @@ jobs:
         run: |
           echo "🚀 Deploying to Kubernetes..."
           
-          # Setup kubeconfig
+          # Setup kubeconfig - try secret first, then fall back to k3s config
           mkdir -p ~/.kube
-          echo "${{ secrets.KUBECONFIG }}" | base64 -d > ~/.kube/config
-          chmod 600 ~/.kube/config
+          if [ -n "${{ secrets.KUBECONFIG }}" ]; then
+            echo "${{ secrets.KUBECONFIG }}" | base64 -d > ~/.kube/config
+            chmod 600 ~/.kube/config
+          else
+            # Use k3s config directly with sudo
+            sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
+            sudo chown $USER:$USER ~/.kube/config
+            chmod 600 ~/.kube/config
+          fi
           
           # Apply K8s manifests
           kubectl apply -f "Eusuite&DeploymentNando/k8s/platform.yaml"
