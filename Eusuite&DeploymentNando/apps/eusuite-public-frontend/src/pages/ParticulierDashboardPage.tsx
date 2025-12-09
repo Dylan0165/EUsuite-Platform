@@ -64,7 +64,8 @@ const EUSUITE_APPS = [
   },
 ];
 
-const SUBSCRIPTION_PLANS = [
+// Reserved for future subscription plan display
+const _SUBSCRIPTION_PLANS = [
   {
     id: 'gratis',
     name: 'Gratis',
