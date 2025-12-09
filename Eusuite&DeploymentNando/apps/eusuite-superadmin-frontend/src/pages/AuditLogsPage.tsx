@@ -61,10 +61,6 @@ export default function AuditLogsPage() {
   const logs = logsData?.items || logsData || []
   const totalCount = logsData?.total || logs.length
 
-  // Get unique actions and resource types for filters
-  const _uniqueActions = [...new Set(logs.map((l: AuditLog) => l.action))]
-  const _uniqueResources = [...new Set(logs.map((l: AuditLog) => l.resource_type))]
-
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
