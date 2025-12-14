@@ -100,7 +100,7 @@ spec:
   ports:
     - port: 8000
       targetPort: 8000
-      nodePort: 30100
+      nodePort: 30700
   type: NodePort
 
 ---
@@ -149,7 +149,7 @@ spec:
   ports:
     - port: 80
       targetPort: 80
-      nodePort: 30101
+      nodePort: 30701
   type: NodePort
 
 ---
@@ -209,7 +209,7 @@ spec:
   ports:
     - port: 8000
       targetPort: 8000
-      nodePort: 30200
+      nodePort: 30702
   type: NodePort
 
 ---
@@ -258,7 +258,7 @@ spec:
   ports:
     - port: 80
       targetPort: 80
-      nodePort: 30201
+      nodePort: 30703
   type: NodePort
 
 ---
@@ -318,7 +318,7 @@ spec:
   ports:
     - port: 8000
       targetPort: 8000
-      nodePort: 30300
+      nodePort: 30704
   type: NodePort
 
 ---
@@ -367,5 +367,5 @@ spec:
   ports:
     - port: 80
       targetPort: 80
-      nodePort: 30301
+      nodePort: 30705
   type: NodePort
