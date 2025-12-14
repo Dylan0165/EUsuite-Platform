@@ -123,8 +123,14 @@ jobs:
             chmod 600 ~/.kube/config
           fi
           
+          # Debug: show cluster info
+          echo "📍 Cluster info:"
+          kubectl cluster-info
+          kubectl get namespaces
+          
           # Ensure eucloud namespace exists
-          kubectl create namespace eucloud --dry-run=client -o yaml | kubectl apply -f -
+          kubectl create namespace eucloud || echo "Namespace eucloud already exists or cannot be created"
+          kubectl get namespace eucloud || echo "Warning: eucloud namespace not found"
           
           # Apply K8s manifests
           kubectl apply -f "Eusuite&DeploymentNando/k8s/platform.yaml"
