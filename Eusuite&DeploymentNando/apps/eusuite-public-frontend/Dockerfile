@@ -13,7 +13,7 @@ RUN npm ci
 COPY . .
 
 # Set API URL for build (can be overridden)
-ARG VITE_API_URL=http://192.168.124.11:30700/api/v1
+ARG VITE_API_URL=http://192.168.124.50:30700/api/v1
 ENV VITE_API_URL=$VITE_API_URL
 
 # Build the application (run tsc separately for better error output)
