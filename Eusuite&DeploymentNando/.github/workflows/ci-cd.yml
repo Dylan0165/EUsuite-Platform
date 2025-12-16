@@ -1,4 +1,4 @@
-                # =============================================================================
+# =============================================================================
 # EUSuite Platform - CI/CD Pipeline (Self-Hosted Runner)
 # =============================================================================
 name: EUSuite Platform CI/CD
@@ -116,73 +116,61 @@ jobs:
           docker push ${{ env.IMAGE_PREFIX }}/eusuite-superadmin-frontend:${{ github.sha }}
 
       # ========================================
-      # DEPLOY TO KUBERNETES VIA SSH
+      # DEPLOY TO KUBERNETES (Direct - Runner is on server)
       # ========================================
-      - name: Deploy to Kubernetes via SSH
-        env:
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_USER: ${{ secrets.SSH_USER }}
-          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-          DOCKER_USER: ${{ secrets.DOCKER_USERNAME }}
-          DOCKER_PASS: ${{ secrets.DOCKER_PASSWORD }}
-          IMAGE_TAG: ${{ github.sha }}
+      - name: Create Docker Hub Pull Secret
         run: |
-          echo "🚀 Deploying to Kubernetes on $SSH_HOST..."
-          
-          # Setup SSH
-          mkdir -p ~/.ssh
-          echo "$SSH_KEY" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H $SSH_HOST >> ~/.ssh/known_hosts 2>/dev/null
-          
-          # Deploy via SSH
-          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST "DOCKER_USER='$DOCKER_USER' DOCKER_PASS='$DOCKER_PASS'" bash << 'ENDSSH'
-            echo "🔐 Creating Docker Hub secret for image pulling..."
-            kubectl create namespace eucloud --dry-run=client -o yaml | kubectl apply -f -
-            kubectl delete secret dockerhub-credentials -n eucloud --ignore-not-found
-            kubectl create secret docker-registry dockerhub-credentials \
-              --docker-server=https://index.docker.io/v1/ \
-              --docker-username="$DOCKER_USER" \
-              --docker-password="$DOCKER_PASS" \
-              -n eucloud
-            
-            echo "📥 Downloading latest platform.yaml..."
-            curl -sL -o /tmp/platform.yaml https://raw.githubusercontent.com/Dylan0165/EUsuite-Platform/main/Eusuite%26DeploymentNando/k8s/platform.yaml
-            
-            echo "📦 Applying Kubernetes manifests..."
-            kubectl apply -f /tmp/platform.yaml
-            
-            echo "🔄 Restarting deployments to pull new images..."
-            kubectl rollout restart deployment/eucloud-backend -n eucloud || true
-            kubectl rollout restart deployment/eusuite-public-backend -n eucloud || true
-            kubectl rollout restart deployment/eusuite-public-frontend -n eucloud || true
-            kubectl rollout restart deployment/eusuite-company-backend -n eucloud || true
-            kubectl rollout restart deployment/eusuite-company-frontend -n eucloud || true
-            kubectl rollout restart deployment/eusuite-superadmin-backend -n eucloud || true
-            kubectl rollout restart deployment/eusuite-superadmin-frontend -n eucloud || true
-            
-            echo "⏳ Waiting for rollout..."
-            kubectl rollout status deployment/eusuite-public-frontend -n eucloud --timeout=120s || true
-            kubectl rollout status deployment/eusuite-company-frontend -n eucloud --timeout=120s || true
-            kubectl rollout status deployment/eusuite-superadmin-frontend -n eucloud --timeout=120s || true
-            
-            echo "✅ Deployment complete!"
-            kubectl get pods -n eucloud | grep eusuite-
-          ENDSSH
+          echo "🔐 Creating Docker Hub secret for image pulling..."
+          kubectl create namespace eucloud --dry-run=client -o yaml | kubectl apply -f -
+          kubectl delete secret dockerhub-credentials -n eucloud --ignore-not-found
+          kubectl create secret docker-registry dockerhub-credentials \
+            --docker-server=https://index.docker.io/v1/ \
+            --docker-username="${{ secrets.DOCKER_USERNAME }}" \
+            --docker-password="${{ secrets.DOCKER_PASSWORD }}" \
+            -n eucloud
+
+      - name: Delete Old Deployments
+        run: |
+          echo "🗑️ Deleting old deployments to force fresh pull..."
+          kubectl delete deployment --all -n eucloud --ignore-not-found || true
+          kubectl delete service eusuite-public-backend eusuite-public-frontend eusuite-company-backend eusuite-company-frontend eusuite-superadmin-backend eusuite-superadmin-frontend eucloud-backend -n eucloud --ignore-not-found || true
+
+      - name: Deploy to Kubernetes
+        run: |
+          echo "🚀 Deploying to Kubernetes..."
+          kubectl apply -f "Eusuite&DeploymentNando/k8s/platform.yaml"
+
+      - name: Wait for Deployments
+        run: |
+          echo "⏳ Waiting for deployments to be ready..."
+          kubectl rollout status deployment/eucloud-backend -n eucloud --timeout=180s || true
+          kubectl rollout status deployment/eusuite-public-backend -n eucloud --timeout=180s || true
+          kubectl rollout status deployment/eusuite-public-frontend -n eucloud --timeout=180s || true
+          kubectl rollout status deployment/eusuite-company-backend -n eucloud --timeout=180s || true
+          kubectl rollout status deployment/eusuite-company-frontend -n eucloud --timeout=180s || true
+          kubectl rollout status deployment/eusuite-superadmin-backend -n eucloud --timeout=180s || true
+          kubectl rollout status deployment/eusuite-superadmin-frontend -n eucloud --timeout=180s || true
 
       # ========================================
       # VERIFY DEPLOYMENT
       # ========================================
       - name: Verify Deployment
-        env:
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_USER: ${{ secrets.SSH_USER }}
-          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
         run: |
           echo "✅ Verifying deployment..."
-          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST "kubectl get pods -n eucloud && kubectl get svc -n eucloud | grep eusuite-"
+          echo ""
+          echo "📦 Pods:"
+          kubectl get pods -n eucloud
+          echo ""
+          echo "🌐 Services:"
+          kubectl get svc -n eucloud
 
       - name: Deployment Complete
         run: |
           echo "🎉 EUSuite Platform deployed successfully!"
           echo "📦 Images pushed to Docker Hub: ${{ env.IMAGE_PREFIX }}/eusuite-*"
+          echo ""
+          echo "🌐 Access URLs:"
+          echo "  - Public Frontend:     http://192.168.124.50:30701"
+          echo "  - Company Frontend:    http://192.168.124.50:30703"
+          echo "  - Superadmin Frontend: http://192.168.124.50:30705"
+          echo "  - EUCloud Core API:    http://192.168.124.50:30706"
