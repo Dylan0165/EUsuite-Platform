@@ -12,9 +12,9 @@ RUN npm ci
 # Copy source code
 COPY . .
 
-# Set API URL for build
+# Set API URL for build - create .env file so Vite can read it
 ARG VITE_API_URL=http://192.168.124.50:30702/api/v1
-ENV VITE_API_URL=$VITE_API_URL
+RUN echo "VITE_API_URL=${VITE_API_URL}" > .env
 
 # Build the app
 RUN npm run build
