@@ -39,6 +39,17 @@ jobs:
           echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
 
       # ========================================
+      # BUILD EUCLOUD CORE BACKEND (CRITICAL)
+      # ========================================
+      - name: Build EUCloud Core Backend
+        run: |
+          echo "🔨 Building eucloud-backend (CORE)..."
+          cd "Eusuite&DeploymentNando/apps/eucloud-backend"
+          docker build -t ${{ env.IMAGE_PREFIX }}/eucloud-backend:latest -t ${{ env.IMAGE_PREFIX }}/eucloud-backend:${{ github.sha }} .
+          docker push ${{ env.IMAGE_PREFIX }}/eucloud-backend:latest
+          docker push ${{ env.IMAGE_PREFIX }}/eucloud-backend:${{ github.sha }}
+
+      # ========================================
       # BUILD PUBLIC BACKEND
       # ========================================
       - name: Build Public Backend
@@ -142,6 +153,7 @@ jobs:
             kubectl apply -f /tmp/platform.yaml
             
             echo "🔄 Restarting deployments to pull new images..."
+            kubectl rollout restart deployment/eucloud-backend -n eucloud || true
             kubectl rollout restart deployment/eusuite-public-backend -n eucloud || true
             kubectl rollout restart deployment/eusuite-public-frontend -n eucloud || true
             kubectl rollout restart deployment/eusuite-company-backend -n eucloud || true

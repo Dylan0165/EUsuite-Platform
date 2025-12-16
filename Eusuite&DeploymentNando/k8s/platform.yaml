@@ -45,6 +45,68 @@ data:
 
 ---
 # =============================================================================
+# EUCLOUD CORE BACKEND (CRITICAL - All services depend on this)
+# =============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: eucloud-backend
+  namespace: eucloud
+  labels:
+    app: eucloud-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: eucloud-backend
+  template:
+    metadata:
+      labels:
+        app: eucloud-backend
+    spec:
+      imagePullSecrets:
+        - name: dockerhub-credentials
+      containers:
+        - name: eucloud-backend
+          image: dylan016504/eucloud-backend:latest
+          ports:
+            - containerPort: 80
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: eusuite-secrets
+                  key: database-url
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: eusuite-secrets
+                  key: jwt-secret
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "200m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: eucloud-backend
+  namespace: eucloud
+spec:
+  selector:
+    app: eucloud-backend
+  ports:
+    - port: 80
+      targetPort: 80
+      nodePort: 30706
+  type: NodePort
+
+---
+# =============================================================================
 # PUBLIC BACKEND
 # =============================================================================
 apiVersion: apps/v1
