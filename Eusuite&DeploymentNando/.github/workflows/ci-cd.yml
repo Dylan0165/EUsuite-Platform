@@ -112,6 +112,8 @@ jobs:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}
           SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          DOCKER_USER: ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_PASS: ${{ secrets.DOCKER_PASSWORD }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
           echo "🚀 Deploying to Kubernetes on $SSH_HOST..."
@@ -123,7 +125,16 @@ jobs:
           ssh-keyscan -H $SSH_HOST >> ~/.ssh/known_hosts 2>/dev/null
           
           # Deploy via SSH
-          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST << 'ENDSSH'
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST "DOCKER_USER='$DOCKER_USER' DOCKER_PASS='$DOCKER_PASS'" bash << 'ENDSSH'
+            echo "🔐 Creating Docker Hub secret for image pulling..."
+            kubectl create namespace eucloud --dry-run=client -o yaml | kubectl apply -f -
+            kubectl delete secret dockerhub-credentials -n eucloud --ignore-not-found
+            kubectl create secret docker-registry dockerhub-credentials \
+              --docker-server=https://index.docker.io/v1/ \
+              --docker-username="$DOCKER_USER" \
+              --docker-password="$DOCKER_PASS" \
+              -n eucloud
+            
             echo "📥 Downloading latest platform.yaml..."
             curl -sL -o /tmp/platform.yaml https://raw.githubusercontent.com/Dylan0165/EUsuite-Platform/main/Eusuite%26DeploymentNando/k8s/platform.yaml
             

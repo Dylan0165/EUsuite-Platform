@@ -64,6 +64,8 @@ spec:
       labels:
         app: eusuite-public-backend
     spec:
+      imagePullSecrets:
+        - name: dockerhub-credentials
       containers:
         - name: eusuite-public-backend
           image: dylan016504/eusuite-public-backend:latest
@@ -124,6 +126,8 @@ spec:
       labels:
         app: eusuite-public-frontend
     spec:
+      imagePullSecrets:
+        - name: dockerhub-credentials
       containers:
         - name: eusuite-public-frontend
           image: dylan016504/eusuite-public-frontend:latest
@@ -173,6 +177,8 @@ spec:
       labels:
         app: eusuite-company-backend
     spec:
+      imagePullSecrets:
+        - name: dockerhub-credentials
       containers:
         - name: eusuite-company-backend
           image: dylan016504/eusuite-company-backend:latest
@@ -233,6 +239,8 @@ spec:
       labels:
         app: eusuite-company-frontend
     spec:
+      imagePullSecrets:
+        - name: dockerhub-credentials
       containers:
         - name: eusuite-company-frontend
           image: dylan016504/eusuite-company-frontend:latest
@@ -282,6 +290,8 @@ spec:
       labels:
         app: eusuite-superadmin-backend
     spec:
+      imagePullSecrets:
+        - name: dockerhub-credentials
       containers:
         - name: eusuite-superadmin-backend
           image: dylan016504/eusuite-superadmin-backend:latest
@@ -342,6 +352,8 @@ spec:
       labels:
         app: eusuite-superadmin-frontend
     spec:
+      imagePullSecrets:
+        - name: dockerhub-credentials
       containers:
         - name: eusuite-superadmin-frontend
           image: dylan016504/eusuite-superadmin-frontend:latest
