@@ -105,69 +105,59 @@ jobs:
           docker push ${{ env.IMAGE_PREFIX }}/eusuite-superadmin-frontend:${{ github.sha }}
 
       # ========================================
-      # DEPLOY TO KUBERNETES
+      # DEPLOY TO KUBERNETES VIA SSH
       # ========================================
-      - name: Deploy to Kubernetes
+      - name: Deploy to Kubernetes via SSH
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          IMAGE_TAG: ${{ github.sha }}
         run: |
-          echo "🚀 Deploying to Kubernetes..."
+          echo "🚀 Deploying to Kubernetes on $SSH_HOST..."
           
-          # Setup kubeconfig - try secret first, then fall back to k3s config
-          mkdir -p ~/.kube
-          if [ -n "${{ secrets.KUBECONFIG }}" ]; then
-            echo "${{ secrets.KUBECONFIG }}" | base64 -d > ~/.kube/config
-            chmod 600 ~/.kube/config
-          else
-            # Use k3s config directly with sudo
-            sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
-            sudo chown $USER:$USER ~/.kube/config
-            chmod 600 ~/.kube/config
-          fi
+          # Setup SSH
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H $SSH_HOST >> ~/.ssh/known_hosts 2>/dev/null
           
-          # Debug: show cluster info
-          echo "📍 Cluster info:"
-          kubectl cluster-info
-          kubectl get namespaces
-          
-          # Ensure eucloud namespace exists
-          kubectl create namespace eucloud || echo "Namespace eucloud already exists or cannot be created"
-          kubectl get namespace eucloud || echo "Warning: eucloud namespace not found"
-          
-          # Apply K8s manifests
-          kubectl apply -f "Eusuite&DeploymentNando/k8s/platform.yaml"
-          
-          # Update images to latest in eucloud namespace
-          kubectl set image deployment/eusuite-public-backend \
-            eusuite-public-backend=${{ env.IMAGE_PREFIX }}/eusuite-public-backend:${{ github.sha }} \
-            -n eucloud || true
-          
-          kubectl set image deployment/eusuite-public-frontend \
-            eusuite-public-frontend=${{ env.IMAGE_PREFIX }}/eusuite-public-frontend:${{ github.sha }} \
-            -n eucloud || true
-          
-          kubectl set image deployment/eusuite-company-backend \
-            eusuite-company-backend=${{ env.IMAGE_PREFIX }}/eusuite-company-backend:${{ github.sha }} \
-            -n eucloud || true
-          
-          kubectl set image deployment/eusuite-company-frontend \
-            eusuite-company-frontend=${{ env.IMAGE_PREFIX }}/eusuite-company-frontend:${{ github.sha }} \
-            -n eucloud || true
-          
-          kubectl set image deployment/eusuite-superadmin-backend \
-            eusuite-superadmin-backend=${{ env.IMAGE_PREFIX }}/eusuite-superadmin-backend:${{ github.sha }} \
-            -n eucloud || true
-          
-          kubectl set image deployment/eusuite-superadmin-frontend \
-            eusuite-superadmin-frontend=${{ env.IMAGE_PREFIX }}/eusuite-superadmin-frontend:${{ github.sha }} \
-            -n eucloud || true
+          # Deploy via SSH
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST << 'ENDSSH'
+            echo "📥 Downloading latest platform.yaml..."
+            curl -sL -o /tmp/platform.yaml https://raw.githubusercontent.com/Dylan0165/EUsuite-Platform/main/Eusuite%26DeploymentNando/k8s/platform.yaml
+            
+            echo "📦 Applying Kubernetes manifests..."
+            kubectl apply -f /tmp/platform.yaml
+            
+            echo "🔄 Restarting deployments to pull new images..."
+            kubectl rollout restart deployment/eusuite-public-backend -n eucloud || true
+            kubectl rollout restart deployment/eusuite-public-frontend -n eucloud || true
+            kubectl rollout restart deployment/eusuite-company-backend -n eucloud || true
+            kubectl rollout restart deployment/eusuite-company-frontend -n eucloud || true
+            kubectl rollout restart deployment/eusuite-superadmin-backend -n eucloud || true
+            kubectl rollout restart deployment/eusuite-superadmin-frontend -n eucloud || true
+            
+            echo "⏳ Waiting for rollout..."
+            kubectl rollout status deployment/eusuite-public-frontend -n eucloud --timeout=120s || true
+            kubectl rollout status deployment/eusuite-company-frontend -n eucloud --timeout=120s || true
+            kubectl rollout status deployment/eusuite-superadmin-frontend -n eucloud --timeout=120s || true
+            
+            echo "✅ Deployment complete!"
+            kubectl get pods -n eucloud | grep eusuite-
+          ENDSSH
 
       # ========================================
       # VERIFY DEPLOYMENT
       # ========================================
       - name: Verify Deployment
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
         run: |
           echo "✅ Verifying deployment..."
-          kubectl get pods -n eucloud
-          kubectl get services -n eucloud
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST "kubectl get pods -n eucloud && kubectl get svc -n eucloud | grep eusuite-"
 
       - name: Deployment Complete
         run: |
